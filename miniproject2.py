@@ -116,56 +116,50 @@ def averageAggregation(db, root, column):
 def displayDataInTable(db, root):
     startTime = time.time()
     cursor = db.cursor()
-    if root.getvar(name = "selectedDisplay") == 1:
+    
+    if root.getvar(name="selectedDisplay") == 1:
         widget = root.nametowidget("bottomF").nametowidget("statusLine")
-        widget.config(text = "Status: Can't display table. The table is already present.")
+        widget.config(text="Status: Can't display table. The table is already present.")
         return
 
     try:
-        cursor.execute("SELECT * from Movies")
+        cursor.execute("SELECT * FROM Movies")
     except sqlite3.OperationalError:
         widget = root.nametowidget("bottomF").nametowidget("statusLine")
-        widget.config(text = "Status: Can't display table. No database present.")
+        widget.config(text="Status: Can't display table. No database present.")
         return
-    root.setvar(name = "selectedDisplay", value = 1)
 
-    container = Frame(root.nametowidget("mainF"), name = "display")
+    root.setvar(name="selectedDisplay", value=1)
+
+    container = Frame(root.nametowidget("mainF"), name="display")
     container.pack(fill='both', expand=True)
-    table = ttk.Treeview(container, columns=("Title", "Year", "Score", "Rating"), show='headings')
+
+    table = ttk.Treeview(container, columns=("ID", "Title", "Year", "Score", "Rating"), show='headings')
     
+    table.heading("ID", text="ID")
     table.heading("Title", text="Title")
     table.heading("Year", text="Year")
     table.heading("Score", text="Score")
-    table.heading("Rating", text = "Rating")
+    table.heading("Rating", text="Rating")
 
     widget = root.nametowidget("bottomF").nametowidget("statusLine")
-    widget.config(text = "Status: Table displayed. It took {:.4f} seconds.".format(time.time() - startTime))
-    
+    widget.config(text="Status: Table displayed. It took {:.4f} seconds.".format(time.time() - startTime))
+
+    table.column("ID", width=30, anchor=CENTER)
     table.column("Title", width=200, anchor=W)
     table.column("Year", width=30, anchor=CENTER)
-    table.column("Score", width=200, anchor=CENTER)
-    table.column("Rating", width=30, anchor=CENTER)
+    table.column("Score", width=50, anchor=CENTER)
+    table.column("Rating", width=20, anchor=CENTER)
 
-    for items in cursor.fetchall():
-        table.insert("", "end", values = items)
+    for idx, items in enumerate(cursor.fetchall(), start=1):
+        table.insert("", "end", values=(idx, *items))
 
     scrollbar = ttk.Scrollbar(container, orient=VERTICAL, command=table.yview)
     table.configure(yscroll=scrollbar.set)
     scrollbar.pack(side=RIGHT, fill=Y)
-        
-    table.pack()
-    
-    
-    def onUrlClick(event):
-        item_id = table.identify_row(event.y)
-        if item_id:
-            values = table.item(item_id, "values")
-            url = values[3]
-            webbrowser.open(url)
 
-    table.bind("<Button-1>", onUrlClick)
-    table.pack(fill = "both", expand = True)
-    
+    table.pack(fill="both", expand=True)
+
 
 def displayGraphOfYear(db, root):
     startTime = time.time()
@@ -199,13 +193,16 @@ def displayGraphOfYear(db, root):
             return float(rangeMatch.group(1)) <  value < float(rangeMatch.group(2)) + 0.05
         return False
 
-    for rating in cursor.fetchall():
+    for year in cursor.fetchall():
         for sizeRange in rangesDict.keys():
-            if stringToRange(sizeRange, rating[0]):
+            if stringToRange(sizeRange, year[0]):
                 rangesDict[sizeRange] += 1
-    fig = plt.figure(figsize=(10,6))
+    fig = plt.figure(figsize=(9,6))
     ax = fig.add_subplot(111)
-    ax.bar(list(rangesDict.keys()), list(rangesDict.values()))
+    bars = ax.bar(list(rangesDict.keys()), list(rangesDict.values()))
+    for bar in bars:
+        yval = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width() / 2, yval + 1, yval, ha='center', va='bottom')
     ax.set_xlabel("Year")
     ax.set_ylabel("Count")
     ax.set_title("Distribution of Movies by Year")
@@ -217,6 +214,112 @@ def displayGraphOfYear(db, root):
     canvas.get_tk_widget().pack(fill=BOTH, expand=True)
     widget = root.nametowidget("bottomF").nametowidget("statusLine")
     widget.config(text = "Status: Graph displayed. It took {:.4f} seconds.".format(time.time() - startTime))
+    # clean up
+    def onClose():
+        canvas.get_tk_widget().destroy()
+        fig.clear()
+        db.close()
+        root.quit()
+    root.protocol("WM_DELETE_WINDOW", onClose)
+
+
+def displayGraphOfRating(db, root):
+    startTime = time.time()
+    cursor = db.cursor()
+    if root.getvar(name = "selectedDisplay") == 3:
+        widget = root.nametowidget("bottomF").nametowidget("statusLine")
+        widget.config(text = "Status: Can't display graph. The graph is already present.")
+        return
+
+    try:
+        cursor.execute("SELECT Rating from Movies")
+    except sqlite3.OperationalError:
+        widget = root.nametowidget("bottomF").nametowidget("statusLine")
+        widget.config(text = "Status: Can't display graph. No database present.")
+        return
+    root.setvar(name = "selectedDisplay", value = 3)
+    rangesDict = {
+    '1': 0,
+    '2': 0,
+    '3': 0,
+    '4': 0,
+    '5': 0
+    }
+
+    for rating in cursor.fetchall():
+        for ratingValue in rangesDict.keys():
+            if int(ratingValue) == rating[0]:
+                rangesDict[ratingValue] += 1
+
+    fig = plt.figure(figsize=(9,6))
+    ax = fig.add_subplot(111)
+    bars = ax.bar(list(rangesDict.keys()), list(rangesDict.values()))
+    for bar in bars:
+        yval = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width() / 2, yval + 1, yval, ha='center', va='bottom')
+    ax.set_xlabel("Rating")
+    ax.set_ylabel("Count")
+    ax.set_title("Distribution of Movies by Rating")
+    ax.tick_params(axis='x', labelsize=6)
+    container = Frame(root.nametowidget("mainF"), name = "display" )
+    container.pack()
+    canvas = FigureCanvasTkAgg(fig, master = container)
+    canvas.draw()
+    canvas.get_tk_widget().pack(fill=BOTH, expand=True)
+    widget = root.nametowidget("bottomF").nametowidget("statusLine")
+    widget.config(text = "Status: Graph displayed. It took {:.4f} seconds.".format(time.time() - startTime))
+    # clean up
+    def onClose():
+        canvas.get_tk_widget().destroy()
+        fig.clear()
+        db.close()
+        root.quit()
+    root.protocol("WM_DELETE_WINDOW", onClose)
+
+
+def displayPlotOfScoreRating(db, root):
+    startTime = time.time()
+    cursor = db.cursor()
+    if root.getvar(name = "selectedDisplay") == 4:
+        widget = root.nametowidget("bottomF").nametowidget("statusLine")
+        widget.config(text = "Status: Can't display graph. The graph is already present.")
+        return
+
+    try:
+        cursor.execute("SELECT Rating, AVG(Score), Max(Score), Min(Score) from Movies Group By Rating")
+    except sqlite3.OperationalError:
+        widget = root.nametowidget("bottomF").nametowidget("statusLine")
+        widget.config(text = "Status: Can't display graph. No database present.")
+        return
+    root.setvar(name = "selectedDisplay", value = 4)
+
+    scores = []
+    ratingsAvg = []
+    ratingsMax = []
+    ratingsMin = []
+
+    for result in cursor.fetchall():
+        scores.append(result[0])
+        ratingsAvg.append(result[1])
+        ratingsMax.append(result[2])
+        ratingsMin.append(result[3])
+
+    fig = plt.figure(figsize=(9,6))
+    ax = fig.add_subplot(111)
+    ax.plot(scores, ratingsAvg, label='average')
+    ax.plot(scores, ratingsMax, label='maximum')
+    ax.plot(scores, ratingsMin, label='minimum')
+    ax.set_xlabel("Rating")
+    ax.set_ylabel("Score")
+    ax.set_title("Average Score for each Rating")
+    ax.tick_params(axis='x', labelsize=6)
+    container = Frame(root.nametowidget("mainF"), name = "display" )
+    container.pack()
+    canvas = FigureCanvasTkAgg(fig, master = container)
+    canvas.draw()
+    canvas.get_tk_widget().pack(fill=BOTH, expand=True)
+    widget = root.nametowidget("bottomF").nametowidget("statusLine")
+    widget.config(text = "Status: Plot displayed. It took {:.4f} seconds.".format(time.time() - startTime))
     # clean up
     def onClose():
         canvas.get_tk_widget().destroy()
@@ -317,6 +420,10 @@ def run():
     displayTableButton.pack(pady = 10)
     displayGraphButton = Button(buttonsFrame, text = "Display Graph\n of Year", command = lambda: displayGraphOfYear(db, root))
     displayGraphButton.pack(pady = 10)
+    displayGraph2Button = Button(buttonsFrame, text = "Display Graph\n of Rating", command = lambda: displayGraphOfRating(db, root))
+    displayGraph2Button.pack(pady = 10)
+    displayPlotButton = Button(buttonsFrame, text = "Display Plot\n of Score for Rating", command = lambda: displayPlotOfScoreRating(db, root))
+    displayPlotButton.pack(pady = 10)
 
     # final setup
     downloadAndStoreData(jsonUrl, db, root)
